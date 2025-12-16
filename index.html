@@ -88,19 +88,62 @@
             <div id="message" class="message"></div>
         </section>
 
-        <!-- Page 2: Liste des commandes -->
+        <!-- Page 2: Liste des commandes - Navigation -->
         <section id="page-liste" class="page">
             <h2 class="page-title">Liste des Commandes</h2>
             
-            <!-- Filtres par période -->
-            <div class="filters">
-                <button class="filter-btn active" data-filter="jour">Aujourd'hui</button>
-                <button class="filter-btn" data-filter="semaine">Cette semaine</button>
-                <button class="filter-btn" data-filter="mois">Ce mois</button>
+            <!-- Navigation par période -->
+            <div class="period-nav">
+                <button class="period-nav-btn active" data-page="aujourdhui">
+                    <span class="period-icon">📅</span>
+                    <span class="period-label">Aujourd'hui</span>
+                </button>
+                <button class="period-nav-btn" data-page="semaine">
+                    <span class="period-icon">📆</span>
+                    <span class="period-label">Cette semaine</span>
+                </button>
+                <button class="period-nav-btn" data-page="mois">
+                    <span class="period-icon">🗓️</span>
+                    <span class="period-label">Ce mois</span>
+                </button>
             </div>
+        </section>
 
-            <!-- Liste des commandes -->
-            <div id="commandes-container" class="commandes-container">
+        <!-- Page Aujourd'hui -->
+        <section id="page-aujourdhui" class="page period-page">
+            <div class="period-header">
+                <button class="back-btn" onclick="goBackToList()">← Retour</button>
+                <h2 class="period-title">Commandes d'aujourd'hui</h2>
+            </div>
+            
+            <div class="stats-container" id="stats-aujourdhui"></div>
+            <div id="commandes-aujourdhui" class="gallery-container">
+                <p class="loading">Chargement...</p>
+            </div>
+        </section>
+
+        <!-- Page Cette semaine -->
+        <section id="page-semaine" class="page period-page">
+            <div class="period-header">
+                <button class="back-btn" onclick="goBackToList()">← Retour</button>
+                <h2 class="period-title">Commandes de cette semaine</h2>
+            </div>
+            
+            <div class="stats-container" id="stats-semaine"></div>
+            <div id="commandes-semaine" class="gallery-container">
+                <p class="loading">Chargement...</p>
+            </div>
+        </section>
+
+        <!-- Page Ce mois -->
+        <section id="page-mois" class="page period-page">
+            <div class="period-header">
+                <button class="back-btn" onclick="goBackToList()">← Retour</button>
+                <h2 class="period-title">Commandes de ce mois</h2>
+            </div>
+            
+            <div class="stats-container" id="stats-mois"></div>
+            <div id="commandes-mois" class="gallery-container">
                 <p class="loading">Chargement...</p>
             </div>
         </section>
@@ -112,6 +155,14 @@
             <button class="modal-close" id="modal-close">&times;</button>
             <h2>Détails de la commande</h2>
             <div id="modal-body" class="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Visionneuse plein écran pour les photos de commande -->
+    <div id="image-viewer" class="image-viewer" aria-hidden="true">
+        <button id="image-viewer-close" class="image-viewer-close" aria-label="Fermer la photo">&times;</button>
+        <div class="image-viewer-content">
+            <img id="image-viewer-img" class="image-viewer-img" alt="Photo de la commande en plein écran">
         </div>
     </div>
 

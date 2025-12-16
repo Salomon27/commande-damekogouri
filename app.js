@@ -78,6 +78,16 @@ function showConnectionStatus(type, message) {
 
 // Initialisation au chargement
 document.addEventListener('DOMContentLoaded', async () => {
+    // Initialiser l'UI même si la base n'est pas connectée
+    initMobileMenu();
+    initNavigation();
+    initForm();
+    initFilters();
+    initModal();
+    initPhotoCapture();
+    initImageViewer();
+    
+    // Puis vérifier la connexion à la base (non bloquant pour l'UI)
     if (!supabase) {
         showConnectionStatus('error', '❌ Base de données non initialisée. Vérifiez que le SDK Supabase est chargé.');
         return;
@@ -91,17 +101,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.warn('Application démarrée sans connexion à la base de données. Certaines fonctionnalités peuvent être limitées.');
     }
     
-    initMobileMenu();
-    initNavigation();
-    initForm();
-    initFilters();
-    initModal();
-    initPhotoCapture();
-    
-    // Charger les commandes si on est sur la page liste
-    if (document.getElementById('page-liste').classList.contains('active')) {
-        loadCommandes();
-    }
+    // Ne rien charger automatiquement, l'utilisateur choisira la période
 });
 
 // Gestion du menu mobile
@@ -174,10 +174,46 @@ function initNavigation() {
             
             // Charger les commandes si on va sur la page liste
             if (targetPage === 'liste') {
-                loadCommandes();
+                // Ne rien charger, juste afficher la navigation
             }
         });
     });
+    
+    // Navigation par période
+    const periodNavButtons = document.querySelectorAll('.period-nav-btn');
+    periodNavButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetPage = btn.getAttribute('data-page');
+            
+            // Mettre à jour les boutons
+            periodNavButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            // Masquer la page liste et afficher la page période
+            document.getElementById('page-liste').classList.remove('active');
+            pages.forEach(p => {
+                if (p.id.startsWith('page-') && p.id !== 'page-liste' && p.id !== 'page-enregistrement') {
+                    p.classList.remove('active');
+                }
+            });
+            
+            document.getElementById(`page-${targetPage}`).classList.add('active');
+            
+            // Charger les commandes pour cette période
+            loadCommandesForPeriod(targetPage);
+        });
+    });
+}
+
+// Fonction pour retourner à la liste
+function goBackToList() {
+    const pages = document.querySelectorAll('.page');
+    pages.forEach(p => {
+        if (p.id.startsWith('page-') && p.id !== 'page-liste' && p.id !== 'page-enregistrement') {
+            p.classList.remove('active');
+        }
+    });
+    document.getElementById('page-liste').classList.add('active');
 }
 
 // Gestion du formulaire
@@ -460,18 +496,116 @@ function resetForm() {
     }, 100);
 }
 
-// Gestion des filtres
-function initFilters() {
-    const filterButtons = document.querySelectorAll('.filter-btn');
+// Charger les commandes pour une période spécifique
+async function loadCommandesForPeriod(period) {
+    const periodMap = {
+        'aujourdhui': 'jour',
+        'semaine': 'semaine',
+        'mois': 'mois'
+    };
     
-    filterButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            filterButtons.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            currentFilter = btn.getAttribute('data-filter');
-            loadCommandes();
-        });
-    });
+    currentFilter = periodMap[period];
+    const container = document.getElementById(`commandes-${period}`);
+    const statsContainer = document.getElementById(`stats-${period}`);
+    
+    if (!container) return;
+    
+    container.innerHTML = '<p class="loading">Chargement...</p>';
+    
+    if (!supabase) {
+        container.innerHTML = '<p class="empty">❌ Base de données non connectée. Vérifiez votre connexion.</p>';
+        return;
+    }
+    
+    try {
+        let query = supabase
+            .from('commandes')
+            .select('*')
+            .order('created_at', { ascending: false });
+        
+        const now = new Date();
+        let startDate;
+        
+        switch (currentFilter) {
+            case 'jour':
+                startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                break;
+            case 'semaine':
+                const dayOfWeek = now.getDay();
+                startDate = new Date(now);
+                startDate.setDate(now.getDate() - dayOfWeek);
+                startDate.setHours(0, 0, 0, 0);
+                break;
+            case 'mois':
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                break;
+        }
+        
+        if (startDate) {
+            query = query.gte('created_at', startDate.toISOString());
+        }
+        
+        const { data, error } = await query;
+        
+        if (error) {
+            throw error;
+        }
+        
+        if (data && data.length > 0) {
+            displayGalleryCommandes(data, container);
+            updateStatsForPeriod(data, statsContainer);
+        } else {
+            container.innerHTML = '<p class="empty">Aucune commande trouvée pour cette période.</p>';
+            if (statsContainer) statsContainer.innerHTML = '';
+        }
+        
+    } catch (error) {
+        console.error('Erreur:', error);
+        let errorMsg = 'Erreur lors du chargement des commandes.';
+        if (error.message) {
+            if (error.message.includes('JWT') || error.message.includes('Invalid API key')) {
+                errorMsg = '❌ Clé API invalide. Vérifiez votre configuration.';
+            } else if (error.message.includes('relation') || error.message.includes('does not exist')) {
+                errorMsg = '❌ Table "commandes" introuvable. Exécutez le script SQL de configuration.';
+            } else if (error.message.includes('permission') || error.message.includes('policy')) {
+                errorMsg = '❌ Problème de permissions. Vérifiez les politiques RLS dans Supabase.';
+            }
+        }
+        container.innerHTML = `<p class="empty">${errorMsg}</p>`;
+    }
+}
+
+// Mise à jour des statistiques pour une période
+function updateStatsForPeriod(commandes, container) {
+    if (!container) return;
+    
+    const total = commandes.length;
+    const montantTotal = commandes.reduce((sum, cmd) => sum + parseFloat(cmd.montant || 0), 0);
+    const avecPhoto = commandes.filter(cmd => cmd.photo_url).length;
+    
+    container.innerHTML = `
+        <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-content">
+                <div class="stat-value">${total}</div>
+                <div class="stat-label">Total</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">💰</div>
+            <div class="stat-content">
+                <div class="stat-value">${montantTotal.toLocaleString('fr-FR', {minimumFractionDigits: 0, maximumFractionDigits: 0})} FCFA</div>
+                <div class="stat-label">Montant total</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">📷</div>
+            <div class="stat-content">
+                <div class="stat-value">${avecPhoto}</div>
+                <div class="stat-label">Avec photo</div>
+            </div>
+        </div>
+    `;
 }
 
 // Chargement des commandes
@@ -544,15 +678,98 @@ async function loadCommandes() {
 // Affichage des commandes
 function displayCommandes(commandes) {
     const container = document.getElementById('commandes-container');
+    
+    if (!container.classList.contains('grid-view') && !container.classList.contains('list-view')) {
+        container.classList.add('grid-view');
+    }
+    
     container.innerHTML = '';
+    
+    if (commandes.length === 0) {
+        container.innerHTML = '<p class="empty">Aucune commande trouvée pour cette période.</p>';
+        updateStats([]);
+        return;
+    }
     
     commandes.forEach(commande => {
         const card = createCommandeCard(commande);
         container.appendChild(card);
     });
+    
+    updateStats(commandes);
 }
 
-// Création d'une carte de commande
+// Mise à jour des statistiques
+function updateStats(commandes) {
+    const total = commandes.length;
+    const montantTotal = commandes.reduce((sum, cmd) => sum + parseFloat(cmd.montant || 0), 0);
+    const avecPhoto = commandes.filter(cmd => cmd.photo_url).length;
+    
+    document.getElementById('stat-total').textContent = total;
+    document.getElementById('stat-montant').textContent = montantTotal.toLocaleString('fr-FR', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }) + ' FCFA';
+    document.getElementById('stat-photos').textContent = avecPhoto;
+}
+
+// Affichage en galerie style Google Photos
+function displayGalleryCommandes(commandes, container) {
+    container.innerHTML = '';
+    
+    commandes.forEach(commande => {
+        const galleryItem = createGalleryItem(commande);
+        container.appendChild(galleryItem);
+    });
+}
+
+// Création d'un élément de galerie
+function createGalleryItem(commande) {
+    const item = document.createElement('div');
+    item.className = 'gallery-item';
+    
+    const date = commande.created_at ? new Date(commande.created_at) : new Date();
+    const dateFormatted = date.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
+    
+    const montantFormatted = commande.montant.toLocaleString('fr-FR', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }) + ' FCFA';
+    
+    const hasPhoto = commande.photo_url;
+    
+    item.innerHTML = `
+        <div class="gallery-image-wrapper">
+            ${hasPhoto ? 
+                `<img src="${commande.photo_url}" alt="Commande ${commande.numero_client}" loading="lazy" class="gallery-image" onerror="this.parentElement.innerHTML='<div class=\\'gallery-placeholder\\'><span>📦</span></div>'">` :
+                `<div class="gallery-placeholder"><span>📦</span></div>`
+            }
+            <div class="gallery-overlay">
+                <div class="gallery-info">
+                    <div class="gallery-info-top">
+                        <span class="gallery-client">#${commande.numero_client}</span>
+                        <span class="gallery-montant">${montantFormatted}</span>
+                    </div>
+                    <div class="gallery-info-bottom">
+                        <span class="gallery-date">${dateFormatted}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    item.addEventListener('click', () => {
+        showModal(commande);
+    });
+    
+    return item;
+}
+
+// Création d'une carte de commande (ancienne version pour compatibilité)
 function createCommandeCard(commande) {
     const card = document.createElement('div');
     card.className = 'card';
@@ -595,6 +812,47 @@ function createCommandeCard(commande) {
     });
     
     return card;
+}
+
+// Visionneuse d'image plein écran
+function initImageViewer() {
+    const viewer = document.getElementById('image-viewer');
+    const closeBtn = document.getElementById('image-viewer-close');
+    const img = document.getElementById('image-viewer-img');
+    
+    if (!viewer || !closeBtn || !img) return;
+    
+    const closeViewer = () => {
+        viewer.classList.remove('active');
+        viewer.setAttribute('aria-hidden', 'true');
+        img.src = '';
+    };
+    
+    closeBtn.addEventListener('click', closeViewer);
+    
+    viewer.addEventListener('click', (e) => {
+        if (e.target === viewer) {
+            closeViewer();
+        }
+    });
+    
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && viewer.classList.contains('active')) {
+            closeViewer();
+        }
+    });
+}
+
+function openImageViewer(src, altText) {
+    const viewer = document.getElementById('image-viewer');
+    const img = document.getElementById('image-viewer-img');
+    
+    if (!viewer || !img) return;
+    
+    img.src = src;
+    img.alt = altText || 'Photo de la commande en plein écran';
+    viewer.classList.add('active');
+    viewer.setAttribute('aria-hidden', 'false');
 }
 
 // Gestion de la modal
@@ -641,27 +899,43 @@ function showModal(commande) {
     let photoHtml = '';
     if (commande.photo_url) {
         photoHtml = `
-        <div class="card-row">
-            <span class="card-label">Photo:</span>
-        </div>
-        <div class="modal-photo">
-            <img src="${commande.photo_url}" alt="Photo de la commande" style="width: 100%; max-height: 400px; object-fit: contain; border-radius: 8px; margin-top: 8px;">
+        <div class="modal-photo-section">
+            <div class="modal-photo-header">
+                <span class="modal-photo-label">Photo de la commande</span>
+                <button class="modal-photo-fullscreen" onclick="openImageViewer('${commande.photo_url}', 'Commande ${commande.numero_client}')" aria-label="Voir en plein écran">
+                    <span>⛶</span>
+                </button>
+            </div>
+            <div class="modal-photo-container">
+                <img src="${commande.photo_url}" alt="Photo de la commande" class="modal-photo-img" onclick="openImageViewer('${commande.photo_url}', 'Commande ${commande.numero_client}')">
+            </div>
         </div>
         `;
     }
     
     modalBody.innerHTML = `
-        <div class="card-row">
-            <span class="card-label">Numéro client:</span>
-            <span class="card-value">${commande.numero_client}</span>
-        </div>
-        <div class="card-row">
-            <span class="card-label">Montant:</span>
-            <span class="card-value">${montantFormatted}</span>
-        </div>
-        <div class="card-row">
-            <span class="card-label">Date:</span>
-            <span class="card-value">${dateFormatted}</span>
+        <div class="modal-details-grid">
+            <div class="modal-detail-item">
+                <div class="modal-detail-icon">👤</div>
+                <div class="modal-detail-content">
+                    <div class="modal-detail-label">Numéro client</div>
+                    <div class="modal-detail-value">#${commande.numero_client}</div>
+                </div>
+            </div>
+            <div class="modal-detail-item">
+                <div class="modal-detail-icon">💰</div>
+                <div class="modal-detail-content">
+                    <div class="modal-detail-label">Montant</div>
+                    <div class="modal-detail-value modal-detail-value-highlight">${montantFormatted}</div>
+                </div>
+            </div>
+            <div class="modal-detail-item">
+                <div class="modal-detail-icon">📅</div>
+                <div class="modal-detail-content">
+                    <div class="modal-detail-label">Date de création</div>
+                    <div class="modal-detail-value">${dateFormatted}</div>
+                </div>
+            </div>
         </div>
         ${photoHtml}
     `;
@@ -669,18 +943,38 @@ function showModal(commande) {
     document.getElementById('modal').classList.add('active');
 }
 
-// Afficher un message
+// Afficher un message (notification toast discrète)
 function showMessage(text, type) {
-    const messageEl = document.getElementById('message');
-    messageEl.textContent = text;
-    messageEl.className = `message ${type}`;
-    
-    // Masquer après 3 secondes pour les messages de succès (discret)
-    if (type === 'success') {
-        setTimeout(() => {
-            messageEl.classList.remove('success');
-            messageEl.textContent = '';
-        }, 3000);
+    // Créer un conteneur de notifications s'il n'existe pas
+    let toastContainer = document.getElementById('toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.id = 'toast-container';
+        toastContainer.className = 'toast-container';
+        document.body.appendChild(toastContainer);
     }
+    
+    // Créer la notification toast
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    
+    const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
+    toast.innerHTML = `
+        <div class="toast-icon">${icon}</div>
+        <div class="toast-message">${text}</div>
+        <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+    `;
+    
+    toastContainer.appendChild(toast);
+    
+    // Animation d'entrée
+    setTimeout(() => toast.classList.add('show'), 10);
+    
+    // Masquer automatiquement après 4 secondes pour succès, 6 pour erreur
+    const duration = type === 'success' ? 4000 : type === 'error' ? 6000 : 5000;
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
 }
 
