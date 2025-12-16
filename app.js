@@ -1,0 +1,686 @@
+// Initialisation
+let currentFilter = 'jour';
+
+// Variables globales
+let capturedPhotoFile = null;
+
+// Vérification de la connexion à la base de données
+async function checkDatabaseConnection() {
+    if (!supabase) {
+        showConnectionStatus('error', '❌ Base de données non initialisée. Vérifiez votre configuration.');
+        return false;
+    }
+    
+    try {
+        const { data, error } = await supabase
+            .from('commandes')
+            .select('id')
+            .limit(1);
+        
+        if (error) {
+            throw error;
+        }
+        
+        showConnectionStatus('success', '✅ Connexion à la base de données réussie');
+        return true;
+    } catch (error) {
+        console.error('Erreur de connexion:', error);
+        let errorMessage = '❌ Erreur de connexion à la base de données.';
+        
+        if (error.message) {
+            if (error.message.includes('JWT')) {
+                errorMessage += ' Clé API invalide.';
+            } else if (error.message.includes('relation') || error.message.includes('does not exist')) {
+                errorMessage += ' Table "commandes" introuvable. Exécutez le script SQL de configuration.';
+            } else if (error.message.includes('permission') || error.message.includes('policy')) {
+                errorMessage += ' Problème de permissions. Vérifiez les politiques RLS.';
+            } else {
+                errorMessage += ' ' + error.message;
+            }
+        }
+        
+        showConnectionStatus('error', errorMessage);
+        return false;
+    }
+}
+
+// Afficher le statut de connexion
+function showConnectionStatus(type, message) {
+    const statusBanner = document.getElementById('db-status-banner');
+    if (!statusBanner) {
+        const banner = document.createElement('div');
+        banner.id = 'db-status-banner';
+        banner.className = `db-status-banner db-status-${type}`;
+        banner.innerHTML = `
+            <div class="db-status-content">
+                <span class="db-status-icon">${type === 'success' ? '✅' : '❌'}</span>
+                <span class="db-status-message">${message}</span>
+                <button class="db-status-close" onclick="this.parentElement.parentElement.remove()">×</button>
+            </div>
+        `;
+        document.body.insertBefore(banner, document.body.firstChild);
+        
+        if (type === 'success') {
+            setTimeout(() => {
+                const bannerEl = document.getElementById('db-status-banner');
+                if (bannerEl) {
+                    bannerEl.style.opacity = '0';
+                    setTimeout(() => bannerEl.remove(), 300);
+                }
+            }, 5000);
+        }
+    } else {
+        statusBanner.className = `db-status-banner db-status-${type}`;
+        statusBanner.querySelector('.db-status-message').textContent = message;
+        statusBanner.querySelector('.db-status-icon').textContent = type === 'success' ? '✅' : '❌';
+    }
+}
+
+// Initialisation au chargement
+document.addEventListener('DOMContentLoaded', async () => {
+    if (!supabase) {
+        showConnectionStatus('error', '❌ Base de données non initialisée. Vérifiez que le SDK Supabase est chargé.');
+        return;
+    }
+    
+    showConnectionStatus('info', '🔄 Vérification de la connexion à la base de données...');
+    
+    const isConnected = await checkDatabaseConnection();
+    
+    if (!isConnected) {
+        console.warn('Application démarrée sans connexion à la base de données. Certaines fonctionnalités peuvent être limitées.');
+    }
+    
+    initMobileMenu();
+    initNavigation();
+    initForm();
+    initFilters();
+    initModal();
+    initPhotoCapture();
+    
+    // Charger les commandes si on est sur la page liste
+    if (document.getElementById('page-liste').classList.contains('active')) {
+        loadCommandes();
+    }
+});
+
+// Gestion du menu mobile
+function initMobileMenu() {
+    const menuToggle = document.getElementById('menu-toggle');
+    const nav = document.getElementById('nav');
+    let overlay = document.querySelector('.nav-overlay');
+    
+    // Créer l'overlay si il n'existe pas
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'nav-overlay';
+        document.body.appendChild(overlay);
+    }
+    
+    // Toggle du menu
+    menuToggle.addEventListener('click', () => {
+        nav.classList.toggle('active');
+        overlay.classList.toggle('active');
+        menuToggle.classList.toggle('active');
+    });
+    
+    // Fermer le menu en cliquant sur l'overlay
+    overlay.addEventListener('click', () => {
+        closeMobileMenu();
+    });
+    
+    // Fermer le menu en cliquant sur un bouton de navigation
+    const navButtons = document.querySelectorAll('.nav-btn');
+    navButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            closeMobileMenu();
+        });
+    });
+    
+    // Fermer le menu lors du redimensionnement vers desktop
+    window.addEventListener('resize', () => {
+        if (window.innerWidth > 1024) {
+            closeMobileMenu();
+        }
+    });
+}
+
+function closeMobileMenu() {
+    const nav = document.getElementById('nav');
+    const overlay = document.querySelector('.nav-overlay');
+    const menuToggle = document.getElementById('menu-toggle');
+    
+    nav.classList.remove('active');
+    if (overlay) overlay.classList.remove('active');
+    menuToggle.classList.remove('active');
+}
+
+// Navigation entre les pages
+function initNavigation() {
+    const navButtons = document.querySelectorAll('.nav-btn');
+    const pages = document.querySelectorAll('.page');
+    
+    navButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetPage = btn.getAttribute('data-page');
+            
+            // Mettre à jour les boutons
+            navButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            // Mettre à jour les pages
+            pages.forEach(p => p.classList.remove('active'));
+            document.getElementById(`page-${targetPage}`).classList.add('active');
+            
+            // Charger les commandes si on va sur la page liste
+            if (targetPage === 'liste') {
+                loadCommandes();
+            }
+        });
+    });
+}
+
+// Gestion du formulaire
+function initForm() {
+    const form = document.getElementById('form-commande');
+    const numeroInput = document.getElementById('numero-client');
+    const montantInput = document.getElementById('montant');
+    
+    // Prévisualisation en temps réel
+    numeroInput.addEventListener('input', updatePreview);
+    montantInput.addEventListener('input', updatePreview);
+    
+    // Animation des icônes au focus
+    const inputs = form.querySelectorAll('input, textarea');
+    inputs.forEach(input => {
+        const wrapper = input.closest('.input-wrapper');
+        if (wrapper) {
+            input.addEventListener('focus', () => {
+                wrapper.classList.add('focused');
+            });
+            input.addEventListener('blur', () => {
+                wrapper.classList.remove('focused');
+            });
+        }
+    });
+    
+    // Initialiser la prévisualisation
+    updatePreview();
+    
+    // Soumission du formulaire
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await submitForm();
+    });
+}
+
+// Initialisation de la capture photo
+function initPhotoCapture() {
+    const photoInput = document.getElementById('photo-commande');
+    const btnCapture = document.getElementById('btn-capture');
+    const btnRemovePhoto = document.getElementById('btn-remove-photo');
+    
+    // Déclencher le sélecteur de fichier (caméra) via le bouton
+    btnCapture.addEventListener('click', () => {
+        photoInput.click();
+    });
+    
+    // Gérer la sélection de photo
+    photoInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            await handlePhotoCapture(file);
+        }
+    });
+    
+    // Supprimer la photo
+    btnRemovePhoto.addEventListener('click', () => {
+        removePhoto();
+    });
+}
+
+// Gérer la capture de photo
+async function handlePhotoCapture(file) {
+    try {
+        // Compresser l'image
+        const compressedFile = await compressImage(file);
+        capturedPhotoFile = compressedFile;
+        
+        // Afficher la prévisualisation
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const previewContainer = document.getElementById('photo-preview-container');
+            const photoPreview = document.getElementById('photo-preview');
+            const previewImg = document.getElementById('preview-img');
+            const previewPhotoText = document.getElementById('preview-photo-text');
+            
+            photoPreview.src = e.target.result;
+            previewImg.src = e.target.result;
+            previewContainer.style.display = 'block';
+            previewImg.style.display = 'block';
+            previewPhotoText.style.display = 'none';
+            
+            updatePreview();
+        };
+        reader.readAsDataURL(compressedFile);
+    } catch (error) {
+        console.error('Erreur lors du traitement de la photo:', error);
+        showMessage('Erreur lors du traitement de la photo', 'error');
+    }
+}
+
+// Compresser l'image
+function compressImage(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const maxWidth = 800;
+                const maxHeight = 800;
+                let width = img.width;
+                let height = img.height;
+                
+                // Redimensionner si nécessaire
+                if (width > maxWidth || height > maxHeight) {
+                    if (width > height) {
+                        height = (height * maxWidth) / width;
+                        width = maxWidth;
+                    } else {
+                        width = (width * maxHeight) / height;
+                        height = maxHeight;
+                    }
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Convertir en blob avec qualité réduite
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        resolve(blob);
+                    } else {
+                        reject(new Error('Erreur lors de la compression'));
+                    }
+                }, 'image/jpeg', 0.6);
+            };
+            img.onerror = reject;
+            img.src = e.target.result;
+        };
+        reader.onerror = reject;
+    });
+}
+
+// Supprimer la photo
+function removePhoto() {
+    const photoInput = document.getElementById('photo-commande');
+    const previewContainer = document.getElementById('photo-preview-container');
+    const previewImg = document.getElementById('preview-img');
+    const previewPhotoText = document.getElementById('preview-photo-text');
+    
+    photoInput.value = '';
+    capturedPhotoFile = null;
+    previewContainer.style.display = 'none';
+    previewImg.style.display = 'none';
+    previewPhotoText.style.display = 'block';
+    updatePreview();
+}
+
+// Mise à jour de la prévisualisation
+function updatePreview() {
+    const numero = document.getElementById('numero-client').value || '—';
+    const montant = document.getElementById('montant').value || '—';
+    
+    // Formater le montant
+    let montantFormatted = '—';
+    if (montant !== '—' && montant !== '') {
+        const montantNum = parseFloat(montant);
+        if (!isNaN(montantNum)) {
+            montantFormatted = montantNum.toLocaleString('fr-FR', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            }) + ' FCFA';
+        }
+    }
+    
+    document.getElementById('preview-numero').textContent = numero;
+    document.getElementById('preview-montant').textContent = montantFormatted;
+}
+
+// Validation du formulaire
+function validateForm() {
+    const numero = document.getElementById('numero-client').value.trim();
+    const montant = document.getElementById('montant').value.trim();
+    
+    if (!numero) {
+        showMessage('Le numéro du client est obligatoire', 'error');
+        document.getElementById('numero-client').focus();
+        return false;
+    }
+    
+    if (!montant) {
+        showMessage('Le montant est obligatoire', 'error');
+        document.getElementById('montant').focus();
+        return false;
+    }
+    
+    const montantNum = parseFloat(montant);
+    if (isNaN(montantNum) || montantNum <= 0) {
+        showMessage('Le montant doit être un nombre valide supérieur à 0', 'error');
+        document.getElementById('montant').focus();
+        return false;
+    }
+    
+    return true;
+}
+
+// Soumission du formulaire
+async function submitForm() {
+    if (!validateForm()) {
+        return;
+    }
+    
+    const submitBtn = document.querySelector('#form-commande button[type="submit"]');
+    const submitBtnContent = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="btn-icon">⏳</span><span>Enregistrement...</span>';
+    
+    try {
+        let photoUrl = null;
+        
+        // Upload de la photo vers Supabase Storage si présente
+        if (capturedPhotoFile) {
+            const timestamp = Date.now();
+            const fileName = `commandes/${timestamp}_${Math.random().toString(36).substring(7)}.jpg`;
+            
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('photos-commandes')
+                .upload(fileName, capturedPhotoFile, {
+                    contentType: 'image/jpeg',
+                    upsert: false
+                });
+            
+            if (uploadError) {
+                throw new Error('Erreur lors de l\'upload de la photo: ' + uploadError.message);
+            }
+            
+            // Obtenir l'URL publique de la photo
+            const { data: urlData } = supabase.storage
+                .from('photos-commandes')
+                .getPublicUrl(fileName);
+            
+            photoUrl = urlData.publicUrl;
+        }
+        
+        // Enregistrer la commande dans la base de données
+        const formData = {
+            numero_client: document.getElementById('numero-client').value.trim(),
+            montant: parseFloat(document.getElementById('montant').value),
+            photo_url: photoUrl
+        };
+        
+        const { data, error } = await supabase
+            .from('commandes')
+            .insert([formData])
+            .select();
+        
+        if (error) {
+            throw error;
+        }
+        
+        // Message de succès discret
+        showMessage('✓ Commande enregistrée avec succès', 'success');
+        
+        // Réinitialiser immédiatement le formulaire
+        resetForm();
+        
+    } catch (error) {
+        console.error('Erreur:', error);
+        showMessage('Erreur lors de l\'enregistrement: ' + error.message, 'error');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = submitBtnContent;
+    }
+}
+
+// Réinitialiser le formulaire
+function resetForm() {
+    document.getElementById('form-commande').reset();
+    removePhoto();
+    updatePreview();
+    
+    // Replacer le focus sur Numéro du client après un court délai
+    setTimeout(() => {
+        document.getElementById('numero-client').focus();
+    }, 100);
+}
+
+// Gestion des filtres
+function initFilters() {
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    
+    filterButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            filterButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentFilter = btn.getAttribute('data-filter');
+            loadCommandes();
+        });
+    });
+}
+
+// Chargement des commandes
+async function loadCommandes() {
+    const container = document.getElementById('commandes-container');
+    container.innerHTML = '<p class="loading">Chargement...</p>';
+    
+    if (!supabase) {
+        container.innerHTML = '<p class="empty">❌ Base de données non connectée. Vérifiez votre connexion.</p>';
+        return;
+    }
+    
+    try {
+        let query = supabase
+            .from('commandes')
+            .select('*')
+            .order('created_at', { ascending: false });
+        
+        // Appliquer le filtre de date
+        const now = new Date();
+        let startDate;
+        
+        switch (currentFilter) {
+            case 'jour':
+                startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                break;
+            case 'semaine':
+                const dayOfWeek = now.getDay();
+                startDate = new Date(now);
+                startDate.setDate(now.getDate() - dayOfWeek);
+                startDate.setHours(0, 0, 0, 0);
+                break;
+            case 'mois':
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                break;
+        }
+        
+        if (startDate) {
+            query = query.gte('created_at', startDate.toISOString());
+        }
+        
+        const { data, error } = await query;
+        
+        if (error) {
+            throw error;
+        }
+        
+        if (data && data.length > 0) {
+            displayCommandes(data);
+        } else {
+            container.innerHTML = '<p class="empty">Aucune commande trouvée pour cette période.</p>';
+        }
+        
+    } catch (error) {
+        console.error('Erreur:', error);
+        let errorMsg = 'Erreur lors du chargement des commandes.';
+        if (error.message) {
+            if (error.message.includes('JWT') || error.message.includes('Invalid API key')) {
+                errorMsg = '❌ Clé API invalide. Vérifiez votre configuration.';
+            } else if (error.message.includes('relation') || error.message.includes('does not exist')) {
+                errorMsg = '❌ Table "commandes" introuvable. Exécutez le script SQL de configuration.';
+            } else if (error.message.includes('permission') || error.message.includes('policy')) {
+                errorMsg = '❌ Problème de permissions. Vérifiez les politiques RLS dans Supabase.';
+            }
+        }
+        container.innerHTML = `<p class="empty">${errorMsg}</p>`;
+    }
+}
+
+// Affichage des commandes
+function displayCommandes(commandes) {
+    const container = document.getElementById('commandes-container');
+    container.innerHTML = '';
+    
+    commandes.forEach(commande => {
+        const card = createCommandeCard(commande);
+        container.appendChild(card);
+    });
+}
+
+// Création d'une carte de commande
+function createCommandeCard(commande) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    
+    const date = commande.created_at ? new Date(commande.created_at) : new Date();
+    const dateFormatted = date.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
+    
+    const montantFormatted = commande.montant.toLocaleString('fr-FR', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }) + ' FCFA';
+    
+    let photoHtml = '';
+    if (commande.photo_url) {
+        photoHtml = `
+        <div class="card-photo">
+            <img src="${commande.photo_url}" alt="Photo de la commande" loading="lazy" onerror="this.style.display='none'">
+        </div>
+        `;
+    }
+    
+    card.innerHTML = `
+        <div class="card-header">
+            <span class="card-label">Client #${commande.numero_client}</span>
+            <span class="card-value">${montantFormatted}</span>
+        </div>
+        ${photoHtml}
+        <div class="card-row">
+            <span class="card-label">Date:</span>
+            <span class="card-value">${dateFormatted}</span>
+        </div>
+    `;
+    
+    card.addEventListener('click', () => {
+        showModal(commande);
+    });
+    
+    return card;
+}
+
+// Gestion de la modal
+function initModal() {
+    const modal = document.getElementById('modal');
+    const closeBtn = document.getElementById('modal-close');
+    
+    closeBtn.addEventListener('click', () => {
+        modal.classList.remove('active');
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.classList.remove('active');
+        }
+    });
+    
+    // Fermer avec la touche Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            modal.classList.remove('active');
+        }
+    });
+}
+
+// Afficher la modal avec les détails
+function showModal(commande) {
+    const modalBody = document.getElementById('modal-body');
+    
+    const date = commande.created_at ? new Date(commande.created_at) : new Date();
+    const dateFormatted = date.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    
+    const montantFormatted = commande.montant.toLocaleString('fr-FR', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }) + ' FCFA';
+    
+    let photoHtml = '';
+    if (commande.photo_url) {
+        photoHtml = `
+        <div class="card-row">
+            <span class="card-label">Photo:</span>
+        </div>
+        <div class="modal-photo">
+            <img src="${commande.photo_url}" alt="Photo de la commande" style="width: 100%; max-height: 400px; object-fit: contain; border-radius: 8px; margin-top: 8px;">
+        </div>
+        `;
+    }
+    
+    modalBody.innerHTML = `
+        <div class="card-row">
+            <span class="card-label">Numéro client:</span>
+            <span class="card-value">${commande.numero_client}</span>
+        </div>
+        <div class="card-row">
+            <span class="card-label">Montant:</span>
+            <span class="card-value">${montantFormatted}</span>
+        </div>
+        <div class="card-row">
+            <span class="card-label">Date:</span>
+            <span class="card-value">${dateFormatted}</span>
+        </div>
+        ${photoHtml}
+    `;
+    
+    document.getElementById('modal').classList.add('active');
+}
+
+// Afficher un message
+function showMessage(text, type) {
+    const messageEl = document.getElementById('message');
+    messageEl.textContent = text;
+    messageEl.className = `message ${type}`;
+    
+    // Masquer après 3 secondes pour les messages de succès (discret)
+    if (type === 'success') {
+        setTimeout(() => {
+            messageEl.classList.remove('success');
+            messageEl.textContent = '';
+        }, 3000);
+    }
+}
+

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="description" content="Application de gestion des commandes avec capture photo">
+    <title>Gestion des Commandes</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Navigation avec menu mobile -->
+        <nav class="nav" id="nav">
+            <button class="menu-toggle" id="menu-toggle" aria-label="Menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            <button class="nav-btn active" data-page="enregistrement">Nouvelle Commande</button>
+            <button class="nav-btn" data-page="liste">Liste des Commandes</button>
+        </nav>
+
+        <!-- Page 1: Enregistrement d'une commande -->
+        <section id="page-enregistrement" class="page active">
+            <h2 class="page-title">Nouvelle Commande</h2>
+
+            <div class="form-container">
+                <form id="form-commande" class="form">
+                    <div class="form-group form-group-required">
+                        <label for="numero-client">N° Client *</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon">👤</span>
+                            <input type="tel" id="numero-client" name="numero_client" inputmode="numeric" autocomplete="tel" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group form-group-required">
+                        <label for="montant">Montant (FCFA) *</label>
+                        <div class="input-wrapper">
+                            <span class="input-icon">💰</span>
+                            <input type="number" id="montant" name="montant" step="1" min="0" inputmode="decimal" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="photo-commande">Photo de la commande (recommandée)</label>
+                        <input type="file" id="photo-commande" name="photo" accept="image/*" capture="environment" style="display: none;">
+                        <button type="button" class="btn btn-photo" id="btn-capture">
+                            <span class="btn-icon">📷</span>
+                            <span>Prendre une photo</span>
+                        </button>
+                        <div id="photo-preview-container" class="photo-preview-container" style="display: none;">
+                            <img id="photo-preview" class="photo-preview" alt="Aperçu photo">
+                            <button type="button" class="btn-remove-photo" id="btn-remove-photo" aria-label="Supprimer la photo">×</button>
+                        </div>
+                        <p class="helper-text">Utilisation de la caméra du téléphone. Compression automatique avant envoi.</p>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <span class="btn-icon">✓</span>
+                        <span>Enregistrer</span>
+                    </button>
+                </form>
+
+                <!-- Prévisualisation -->
+                <div class="preview-container">
+                    <h2>Prévisualisation</h2>
+                    <div id="preview-card" class="card preview-card">
+                        <div class="card-header">
+                            <span class="card-label">Numéro client:</span>
+                            <span id="preview-numero" class="card-value">—</span>
+                        </div>
+                        <div class="card-row">
+                            <span class="card-label">Montant:</span>
+                            <span id="preview-montant" class="card-value">—</span>
+                        </div>
+                        <div class="preview-photo" id="preview-photo">
+                            <p class="helper-text" id="preview-photo-text">Photo non fournie</p>
+                            <img id="preview-img" alt="Aperçu photo" style="display: none;" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Message de succès/erreur -->
+            <div id="message" class="message"></div>
+        </section>
+
+        <!-- Page 2: Liste des commandes -->
+        <section id="page-liste" class="page">
+            <h2 class="page-title">Liste des Commandes</h2>
+            
+            <!-- Filtres par période -->
+            <div class="filters">
+                <button class="filter-btn active" data-filter="jour">Aujourd'hui</button>
+                <button class="filter-btn" data-filter="semaine">Cette semaine</button>
+                <button class="filter-btn" data-filter="mois">Ce mois</button>
+            </div>
+
+            <!-- Liste des commandes -->
+            <div id="commandes-container" class="commandes-container">
+                <p class="loading">Chargement...</p>
+            </div>
+        </section>
+    </div>
+
+    <!-- Modal pour les détails -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" id="modal-close">&times;</button>
+            <h2>Détails de la commande</h2>
+            <div id="modal-body" class="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Script Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+    <script src="pwa.js"></script>
+</body>
+</html>
+
