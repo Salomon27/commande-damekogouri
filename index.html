@@ -107,6 +107,47 @@
                     <span class="period-label">Ce mois</span>
                 </button>
             </div>
+
+            <!-- Filtre personnalisé -->
+            <div class="custom-filter-card">
+                <h3 class="custom-filter-title">Filtre personnalisé</h3>
+                <form id="custom-filter-form" class="custom-filter-form">
+                    <div class="custom-filter-row">
+                        <div class="custom-filter-field">
+                            <label for="filter-numero" class="custom-filter-label">N° client</label>
+                            <input type="tel" id="filter-numero" class="custom-filter-input" placeholder="Ex: 770000000">
+                        </div>
+                        <div class="custom-filter-field">
+                            <label class="custom-filter-label">Montant (FCFA)</label>
+                            <div class="custom-filter-inline">
+                                <input type="number" id="filter-montant-min" class="custom-filter-input" placeholder="Min">
+                                <span class="custom-filter-separator">-</span>
+                                <input type="number" id="filter-montant-max" class="custom-filter-input" placeholder="Max">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="custom-filter-row">
+                        <div class="custom-filter-field">
+                            <label class="custom-filter-label">Date</label>
+                            <div class="custom-filter-inline">
+                                <input type="date" id="filter-date-debut" class="custom-filter-input">
+                                <span class="custom-filter-separator">→</span>
+                                <input type="date" id="filter-date-fin" class="custom-filter-input">
+                            </div>
+                        </div>
+                        <div class="custom-filter-actions">
+                            <button type="button" id="btn-filter-reset" class="btn btn-secondary-custom">Réinitialiser</button>
+                            <button type="submit" class="btn btn-primary-custom">Rechercher</button>
+                        </div>
+                    </div>
+                </form>
+                <p class="custom-filter-helper">Utilisez ce filtre pour faire une recherche précise sans limite de période.</p>
+            </div>
+
+            <!-- Résultats du filtre personnalisé -->
+            <div id="custom-filter-results" class="gallery-container">
+                <p class="empty">Utilisez le filtre ci-dessus pour rechercher une commande précise.</p>
+            </div>
         </section>
 
         <!-- Page Aujourd'hui -->

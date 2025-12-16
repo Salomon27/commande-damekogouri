@@ -1,6 +1,10 @@
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
+    // Chemin du service worker adapté pour GitHub Pages
+    const swPath = location.hostname.includes('github.io') 
+      ? '/commande-damekogouri/sw.js' 
+      : './sw.js';
+    navigator.serviceWorker.register(swPath)
       .then((registration) => {
         console.log('Service Worker enregistré avec succès:', registration.scope);
         

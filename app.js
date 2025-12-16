@@ -46,33 +46,13 @@ async function checkDatabaseConnection() {
 
 // Afficher le statut de connexion
 function showConnectionStatus(type, message) {
-    const statusBanner = document.getElementById('db-status-banner');
-    if (!statusBanner) {
-        const banner = document.createElement('div');
-        banner.id = 'db-status-banner';
-        banner.className = `db-status-banner db-status-${type}`;
-        banner.innerHTML = `
-            <div class="db-status-content">
-                <span class="db-status-icon">${type === 'success' ? '✅' : '❌'}</span>
-                <span class="db-status-message">${message}</span>
-                <button class="db-status-close" onclick="this.parentElement.parentElement.remove()">×</button>
-            </div>
-        `;
-        document.body.insertBefore(banner, document.body.firstChild);
-        
-        if (type === 'success') {
-            setTimeout(() => {
-                const bannerEl = document.getElementById('db-status-banner');
-                if (bannerEl) {
-                    bannerEl.style.opacity = '0';
-                    setTimeout(() => bannerEl.remove(), 300);
-                }
-            }, 5000);
-        }
+    // Tous les statuts DB sont maintenant affichés en toast discret en bas
+    if (type === 'success') {
+        showMessage(message, 'success-db'); // seulement icône
+    } else if (type === 'error') {
+        showMessage(message, 'error');
     } else {
-        statusBanner.className = `db-status-banner db-status-${type}`;
-        statusBanner.querySelector('.db-status-message').textContent = message;
-        statusBanner.querySelector('.db-status-icon').textContent = type === 'success' ? '✅' : '❌';
+        showMessage(message, 'info');
     }
 }
 
@@ -82,7 +62,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     initMobileMenu();
     initNavigation();
     initForm();
-    initFilters();
     initModal();
     initPhotoCapture();
     initImageViewer();
@@ -103,6 +82,102 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Ne rien charger automatiquement, l'utilisateur choisira la période
 });
+
+function initFilters() {
+    const form = document.getElementById('custom-filter-form');
+    const resultsContainer = document.getElementById('custom-filter-results');
+    const resetBtn = document.getElementById('btn-filter-reset');
+    
+    if (!form || !resultsContainer) return;
+    
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await applyCustomFilter();
+    });
+    
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            form.reset();
+            resultsContainer.innerHTML = '<p class="empty">Utilisez le filtre ci-dessus pour rechercher une commande précise.</p>';
+        });
+    }
+}
+
+// Appliquer le filtre personnalisé
+async function applyCustomFilter() {
+    const numero = document.getElementById('filter-numero').value.trim();
+    const montantMin = document.getElementById('filter-montant-min').value.trim();
+    const montantMax = document.getElementById('filter-montant-max').value.trim();
+    const dateDebut = document.getElementById('filter-date-debut').value;
+    const dateFin = document.getElementById('filter-date-fin').value;
+    const container = document.getElementById('custom-filter-results');
+    
+    if (!container) return;
+    
+    container.innerHTML = '<p class="loading">Recherche en cours...</p>';
+    
+    if (!supabase) {
+        container.innerHTML = '<p class="empty">❌ Base de données non connectée. Vérifiez votre connexion.</p>';
+        return;
+    }
+    
+    try {
+        let query = supabase
+            .from('commandes')
+            .select('*')
+            .order('created_at', { ascending: false });
+        
+        if (numero) {
+            // Recherche précise ou par début de numéro
+            query = query.ilike('numero_client', `${numero}%`);
+        }
+        
+        if (montantMin) {
+            const min = parseFloat(montantMin);
+            if (!isNaN(min)) {
+                query = query.gte('montant', min);
+            }
+        }
+        
+        if (montantMax) {
+            const max = parseFloat(montantMax);
+            if (!isNaN(max)) {
+                query = query.lte('montant', max);
+            }
+        }
+        
+        if (dateDebut) {
+            const start = new Date(dateDebut);
+            start.setHours(0, 0, 0, 0);
+            query = query.gte('created_at', start.toISOString());
+        }
+        
+        if (dateFin) {
+            const end = new Date(dateFin);
+            end.setHours(23, 59, 59, 999);
+            query = query.lte('created_at', end.toISOString());
+        }
+        
+        const { data, error } = await query;
+        
+        if (error) {
+            throw error;
+        }
+        
+        if (data && data.length > 0) {
+            displayGalleryCommandes(data, container);
+        } else {
+            container.innerHTML = '<p class="empty">Aucune commande ne correspond à ce filtre.</p>';
+        }
+    } catch (error) {
+        console.error('Erreur lors du filtre personnalisé:', error);
+        let msg = 'Erreur lors de la recherche.';
+        if (error.message) {
+            msg += ' ' + error.message;
+        }
+        container.innerHTML = `<p class="empty">${msg}</p>`;
+    }
+}
 
 // Gestion du menu mobile
 function initMobileMenu() {
@@ -958,7 +1033,10 @@ function showMessage(text, type) {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     
-    const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
+    const isSuccess = type === 'success' || type === 'success-db';
+    const isError = type === 'error';
+    
+    const icon = isSuccess ? '✓' : isError ? '✕' : 'ℹ';
     toast.innerHTML = `
         <div class="toast-icon">${icon}</div>
         <div class="toast-message">${text}</div>
@@ -971,7 +1049,7 @@ function showMessage(text, type) {
     setTimeout(() => toast.classList.add('show'), 10);
     
     // Masquer automatiquement après 4 secondes pour succès, 6 pour erreur
-    const duration = type === 'success' ? 4000 : type === 'error' ? 6000 : 5000;
+    const duration = isSuccess ? 4000 : isError ? 6000 : 5000;
     setTimeout(() => {
         toast.classList.remove('show');
         setTimeout(() => toast.remove(), 300);

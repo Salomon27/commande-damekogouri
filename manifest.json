@@ -2,7 +2,8 @@
   "name": "Gestion des Commandes",
   "short_name": "Commandes",
   "description": "Application de gestion des commandes avec capture photo",
-  "start_url": "/",
+  "start_url": "/commande-damekogouri/index.html",
+  "scope": "/commande-damekogouri/",
   "display": "standalone",
   "background_color": "#f0f4ff",
   "theme_color": "#6366f1",
@@ -28,7 +29,7 @@
       "name": "Nouvelle Commande",
       "short_name": "Nouvelle",
       "description": "Créer une nouvelle commande",
-      "url": "/?page=enregistrement",
+      "url": "/commande-damekogouri/?page=enregistrement",
       "icons": [
         {
           "src": "icon-192.png",

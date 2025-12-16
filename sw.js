@@ -1,12 +1,13 @@
-const CACHE_NAME = 'commandes-v1';
+const CACHE_NAME = 'commandes-v2';
+const BASE_PATH = '/commande-damekogouri/';
 const urlsToCache = [
-  './',
-  './index.html',
-  './styles.css',
-  './app.js',
-  './config.js',
-  './manifest.json',
-  './pwa.js',
+  BASE_PATH,
+  BASE_PATH + 'index.html',
+  BASE_PATH + 'styles.css',
+  BASE_PATH + 'app.js',
+  BASE_PATH + 'config.js',
+  BASE_PATH + 'manifest.json',
+  BASE_PATH + 'pwa.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'
 ];
 
@@ -73,7 +74,7 @@ self.addEventListener('fetch', (event) => {
           })
           .catch(() => {
             if (event.request.destination === 'document') {
-              return caches.match('./index.html');
+              return caches.match(BASE_PATH + 'index.html');
             }
           });
       })
