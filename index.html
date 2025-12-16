@@ -155,6 +155,12 @@
             <div class="period-header">
                 <button class="back-btn" onclick="goBackToList()">← Retour</button>
                 <h2 class="period-title">Commandes d'aujourd'hui</h2>
+                <div class="period-actions">
+                    <button type="button" class="selection-toggle-btn" data-period="aujourdhui">Sélection multiple</button>
+                    <button type="button" class="selection-delete-btn" data-period="aujourdhui" style="display:none;">
+                        Supprimer (<span class="selection-count">0</span>)
+                    </button>
+                </div>
             </div>
             
             <div class="stats-container" id="stats-aujourdhui"></div>
@@ -168,6 +174,12 @@
             <div class="period-header">
                 <button class="back-btn" onclick="goBackToList()">← Retour</button>
                 <h2 class="period-title">Commandes de cette semaine</h2>
+                <div class="period-actions">
+                    <button type="button" class="selection-toggle-btn" data-period="semaine">Sélection multiple</button>
+                    <button type="button" class="selection-delete-btn" data-period="semaine" style="display:none;">
+                        Supprimer (<span class="selection-count">0</span>)
+                    </button>
+                </div>
             </div>
             
             <div class="stats-container" id="stats-semaine"></div>
@@ -181,6 +193,12 @@
             <div class="period-header">
                 <button class="back-btn" onclick="goBackToList()">← Retour</button>
                 <h2 class="period-title">Commandes de ce mois</h2>
+                <div class="period-actions">
+                    <button type="button" class="selection-toggle-btn" data-period="mois">Sélection multiple</button>
+                    <button type="button" class="selection-delete-btn" data-period="mois" style="display:none;">
+                        Supprimer (<span class="selection-count">0</span>)
+                    </button>
+                </div>
             </div>
             
             <div class="stats-container" id="stats-mois"></div>

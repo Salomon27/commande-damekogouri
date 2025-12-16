@@ -3,6 +3,8 @@ let currentFilter = 'jour';
 
 // Variables globales
 let capturedPhotoFile = null;
+let selectionMode = false;
+const selectedCommandeIds = new Set();
 
 // Vérification de la connexion à la base de données
 async function checkDatabaseConnection() {
@@ -62,9 +64,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     initMobileMenu();
     initNavigation();
     initForm();
+    initFilters();
     initModal();
     initPhotoCapture();
     initImageViewer();
+    initSelectionMode();
     
     // Puis vérifier la connexion à la base (non bloquant pour l'UI)
     if (!supabase) {
@@ -802,6 +806,9 @@ function displayGalleryCommandes(commandes, container) {
 function createGalleryItem(commande) {
     const item = document.createElement('div');
     item.className = 'gallery-item';
+    if (commande.id) {
+        item.dataset.commandeId = commande.id;
+    }
     
     const date = commande.created_at ? new Date(commande.created_at) : new Date();
     const dateFormatted = date.toLocaleDateString('fr-FR', {
@@ -826,7 +833,10 @@ function createGalleryItem(commande) {
             <div class="gallery-overlay">
                 <div class="gallery-info">
                     <div class="gallery-info-top">
-                        <span class="gallery-client">#${commande.numero_client}</span>
+                        <span class="gallery-client">
+                            <button type="button" class="gallery-phone-btn" data-phone="${commande.numero_client}" aria-label="Appeler le client">📞</button>
+                            <span class="gallery-client-number">#${commande.numero_client}</span>
+                        </span>
                         <span class="gallery-montant">${montantFormatted}</span>
                     </div>
                     <div class="gallery-info-bottom">
@@ -837,8 +847,23 @@ function createGalleryItem(commande) {
         </div>
     `;
     
+    const phoneBtn = item.querySelector('.gallery-phone-btn');
+    if (phoneBtn) {
+        phoneBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const phone = phoneBtn.dataset.phone;
+            if (phone) {
+                window.location.href = `tel:${phone}`;
+            }
+        });
+    }
+    
     item.addEventListener('click', () => {
-        showModal(commande);
+        if (selectionMode && commande.id) {
+            toggleCommandeSelection(commande.id, item);
+        } else {
+            showModal(commande);
+        }
     });
     
     return item;
@@ -848,6 +873,9 @@ function createGalleryItem(commande) {
 function createCommandeCard(commande) {
     const card = document.createElement('div');
     card.className = 'card';
+    if (commande.id) {
+        card.dataset.commandeId = commande.id;
+    }
     
     const date = commande.created_at ? new Date(commande.created_at) : new Date();
     const dateFormatted = date.toLocaleDateString('fr-FR', {
@@ -994,7 +1022,12 @@ function showModal(commande) {
                 <div class="modal-detail-icon">👤</div>
                 <div class="modal-detail-content">
                     <div class="modal-detail-label">Numéro client</div>
-                    <div class="modal-detail-value">#${commande.numero_client}</div>
+                    <div class="modal-detail-value">
+                        <button type="button" class="modal-phone-btn" data-phone="${commande.numero_client}">
+                            <span>#${commande.numero_client}</span>
+                            <span>📞</span>
+                        </button>
+                    </div>
                 </div>
             </div>
             <div class="modal-detail-item">
@@ -1013,9 +1046,183 @@ function showModal(commande) {
             </div>
         </div>
         ${photoHtml}
+        <div class="modal-actions">
+            <button type="button" id="btn-delete-commande" class="btn-delete-commande">
+                <span class="btn-delete-icon">🗑️</span>
+                <span>Supprimer cette commande</span>
+            </button>
+        </div>
     `;
     
+    // Bouton de suppression
+    const deleteBtn = document.getElementById('btn-delete-commande');
+    if (deleteBtn && commande.id) {
+        deleteBtn.addEventListener('click', () => {
+            handleDeleteCommande(commande);
+        });
+    }
+    
+    const modalPhoneBtn = modalBody.querySelector('.modal-phone-btn');
+    if (modalPhoneBtn) {
+        modalPhoneBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const phone = modalPhoneBtn.dataset.phone;
+            if (phone) {
+                window.location.href = `tel:${phone}`;
+            }
+        });
+    }
+    
     document.getElementById('modal').classList.add('active');
+}
+
+// Suppression d'une commande
+async function handleDeleteCommande(commande) {
+    if (!commande || !commande.id) {
+        showMessage('Impossible de supprimer : identifiant manquant.', 'error');
+        return;
+    }
+    
+    const confirmed = confirm('Voulez-vous vraiment supprimer cette commande ?');
+    if (!confirmed) return;
+    
+    if (!supabase) {
+        showMessage('Base de données non connectée. Suppression impossible.', 'error');
+        return;
+    }
+    
+    try {
+        const { error } = await supabase
+            .from('commandes')
+            .delete()
+            .eq('id', commande.id);
+        
+        if (error) {
+            throw error;
+        }
+        
+        // Retirer la commande de la galerie/listes visibles
+        const elements = document.querySelectorAll(`[data-commande-id="${commande.id}"]`);
+        elements.forEach(el => el.remove());
+        
+        // Fermer la modal
+        const modal = document.getElementById('modal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+        
+        // Si une page période est active, on recharge pour mettre à jour les stats
+        const activePeriodPage = document.querySelector('.period-page.active');
+        if (activePeriodPage && activePeriodPage.id) {
+            const periodKey = activePeriodPage.id.replace('page-', '');
+            if (['aujourdhui', 'semaine', 'mois'].includes(periodKey)) {
+                loadCommandesForPeriod(periodKey);
+            }
+        }
+        
+        showMessage('Commande supprimée avec succès.', 'success');
+    } catch (error) {
+        console.error('Erreur lors de la suppression:', error);
+        showMessage('Erreur lors de la suppression de la commande: ' + error.message, 'error');
+    }
+}
+
+// Gestion du mode sélection multiple
+function initSelectionMode() {
+    const toggleButtons = document.querySelectorAll('.selection-toggle-btn');
+    const deleteButtons = document.querySelectorAll('.selection-delete-btn');
+    
+    toggleButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const isActive = btn.classList.toggle('active');
+            selectionMode = isActive;
+            selectedCommandeIds.clear();
+            updateSelectionUI();
+        });
+    });
+    
+    deleteButtons.forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if (selectedCommandeIds.size === 0) return;
+            await deleteMultipleCommandes();
+        });
+    });
+}
+
+function toggleCommandeSelection(id, element) {
+    if (selectedCommandeIds.has(id)) {
+        selectedCommandeIds.delete(id);
+        element.classList.remove('selected');
+    } else {
+        selectedCommandeIds.add(id);
+        element.classList.add('selected');
+    }
+    updateSelectionUI();
+}
+
+function updateSelectionUI() {
+    const count = selectedCommandeIds.size;
+    const deleteButtons = document.querySelectorAll('.selection-delete-btn');
+    const countSpans = document.querySelectorAll('.selection-delete-btn .selection-count');
+    
+    deleteButtons.forEach(btn => {
+        btn.style.display = selectionMode && count > 0 ? 'inline-flex' : 'none';
+    });
+    
+    countSpans.forEach(span => {
+        span.textContent = count;
+    });
+    
+    if (!selectionMode) {
+        // Nettoyer la sélection visuelle
+        document.querySelectorAll('.gallery-item.selected').forEach(el => el.classList.remove('selected'));
+        selectedCommandeIds.clear();
+        countSpans.forEach(span => span.textContent = '0');
+    }
+}
+
+async function deleteMultipleCommandes() {
+    const ids = Array.from(selectedCommandeIds);
+    if (ids.length === 0) return;
+    
+    const confirmed = confirm(`Voulez-vous vraiment supprimer ${ids.length} commande(s) ?`);
+    if (!confirmed) return;
+    
+    if (!supabase) {
+        showMessage('Base de données non connectée. Suppression impossible.', 'error');
+        return;
+    }
+    
+    try {
+        const { error } = await supabase
+            .from('commandes')
+            .delete()
+            .in('id', ids);
+        
+        if (error) {
+            throw error;
+        }
+        
+        ids.forEach(id => {
+            document.querySelectorAll(`[data-commande-id="${id}"]`).forEach(el => el.remove());
+        });
+        
+        selectionMode = false;
+        updateSelectionUI();
+        
+        const activePeriodPage = document.querySelector('.period-page.active');
+        if (activePeriodPage && activePeriodPage.id) {
+            const periodKey = activePeriodPage.id.replace('page-', '');
+            if (['aujourdhui', 'semaine', 'mois'].includes(periodKey)) {
+                loadCommandesForPeriod(periodKey);
+            }
+        }
+        
+        showMessage('Commandes supprimées avec succès.', 'success');
+    } catch (error) {
+        console.error('Erreur lors de la suppression multiple:', error);
+        showMessage('Erreur lors de la suppression des commandes: ' + error.message, 'error');
+    }
 }
 
 // Afficher un message (notification toast discrète)
